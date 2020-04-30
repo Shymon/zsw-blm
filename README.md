@@ -1,0 +1,1 @@
+# Prosty program na zajęcia ZSW, temat: Balansowanie linii montażowych
