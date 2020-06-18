@@ -1,11 +1,15 @@
+# Ruby 2.6.6
+
+require 'pry'
+
 class Util
   class << self
     def read_orders_from_file(filename)
       orders = []
       File.readlines(filename).each do |line|
-        order_data, prev_order = line.split(';')
+        order_data, prev_orders = line.split(';')
         order_number, order_duration, *next_orders = order_data.split(' ')
-        orders.push Order.new(order_number.to_i, order_duration.to_i, prev_order.to_i, next_orders.map(&:to_i))
+        orders.push Order.new(order_number.to_i, order_duration.to_i, prev_orders.map(&:to_i), next_orders.map(&:to_i))
       end
       orders
     end
@@ -13,9 +17,10 @@ class Util
     def read_orders_from_var(var)
       orders = []
       var.split("\n").each do |line|
-        order_data, prev_order = line.split(';')
+        order_data, prev_orders = line.split(';')
         order_number, order_duration, *next_orders = order_data.split(' ')
-        orders.push Order.new(order_number.to_i, order_duration.to_i, prev_order.to_i, next_orders.map(&:to_i))
+        prev_orders = prev_orders.to_s.split(' ').map(&:to_i)
+        orders.push Order.new(order_number.to_i, order_duration.to_i, prev_orders, next_orders.map(&:to_i))
       end
       orders
     end
@@ -25,27 +30,29 @@ class Util
         order.nexts = order.nexts.map do |next_order_number|
           orders.find { |o| o.number == next_order_number }
         end
-        order.prev = orders.find { |o| o.number == order.prev }
+        order.prevs = order.prevs.map do |prev_order_number|
+          orders.find { |o| o.number == prev_order_number }
+        end
       end
     end
   end
 end
 
 class Order
-  attr_accessor :number, :duration, :prev, :nexts, :rpw_duration
+  attr_accessor :number, :duration, :prevs, :nexts, :rpw_duration
 
-  def initialize(number, duration, prev, nexts)
+  def initialize(number, duration, prevs, nexts)
     @number = number
     @duration = duration
-    @prev = prev
+    @prevs = prevs
     @nexts = nexts
     @rpw_duration = duration
   end
   
   def can_marshal?(marshaled)
-    return true if prev.nil?
+    return true if prevs.none?
 
-    marshaled.find { |o| o.number == prev.number }
+    prevs.map { |prev| marshaled.find { |o| o.number == prev.number } }.all?
   end
 end
 
@@ -93,11 +100,11 @@ class Result
 
     def display 
       stations.each_with_index do |station, i|
-        puts "ST(#{i + 1}) " + station.orders.map { |o| "#{o.number}(#{o.duration})" }.join(' ')
+        puts "  ST(#{i + 1}) " + station.orders.map { |o| "#{o.number}(#{o.duration})" }.join(' ')
       end
-      puts "LE = #{line_eff}%"
-      puts "SI = #{smoothness_ind}"
-      puts "T = #{line_time}"
+      puts "  LE = #{line_eff}%"
+      puts "  SI = #{smoothness_ind}"
+      puts "  T = #{line_time}"
     end
   end
 
@@ -138,6 +145,7 @@ class Solver
       raise "Invalid method: #{method}" unless %{RPW WET}.include? method
 
       orders = send "order_#{method.downcase}", base_orders
+      puts "Order for #{method}:" + orders.map(&:number).join(', ')
       c_time_base = orders.sum(&:duration) / workstations
 
       c_time = c_time_base
@@ -176,7 +184,7 @@ end
 
 ## Configuration
 
-WORKSTATIONS = 3
+WORKSTATIONS = 4
 
 
 # Tutaj podać dane np. tak:
@@ -186,7 +194,19 @@ WORKSTATIONS = 3
 # eos
 
 given_orders = <<-eos
-
+1 3 3;
+2 6 4;
+3 8 6; 1
+4 4 7; 2
+5 7 7;
+6 2 8; 3
+7 3 8; 4 5
+8 6 9 10 11; 7 6
+9 9 12; 8
+10 5 12; 8
+11 2 13; 8
+12 7 13; 10 9
+13 3; 11 12
 
 
 eos
